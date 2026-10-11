@@ -78,21 +78,22 @@ if [ "$ENABLE_KSU" -eq 1 ]; then
     echo "[*] Downloading and running ReSukiSU remote setup script..."
 
     # 版本选择：
-    #   内核侧 SuSFS v2.3.x -> fa12ffde，即 BakaSU main 上 "kernel: fix time side-channel
-    #     detection in selinux hide"（KernelSU PR 3877），修复检测软件通过时序侧信道
-    #     识别 KernelSU 的问题；rc 发行版早于该提交，不含此修复。
+    #   内核侧 SuSFS v2.3.x -> fa12ffde8244008e9afdb7ac0c1bb1bc1b06b95a，即 BakaSU main 上
+    #     "kernel: fix time side-channel detection in selinux hide"（KernelSU PR 3877），
+    #     修复检测软件借 selinux hide 的时序侧信道识别 KernelSU 的问题；rc 发行版早于该提交。
     #   内核侧 SuSFS v2.2.x -> v4.2.0-rc1，v4.2.0-rc2 起依赖的 no_su 系列 helper
     #     由 SuSFS v2.3.0 的 include/linux/susfs_def.h 提供，v2.2.x 侧缺失。
     # 可用环境变量 KSU_REF 覆盖，例如 KSU_REF=main 跟随上游最新测试代码。
     SUSFS_KERNEL_VERSION="$(sed -n 's/^#define SUSFS_VERSION "\(v[0-9.]*\)"/\1/p' include/linux/susfs.h 2>/dev/null | head -n1)"
     case "$SUSFS_KERNEL_VERSION" in
-        v2.3.*) DEFAULT_KSU_REF="fa12ffde" ;;
+        v2.3.*) DEFAULT_KSU_REF="fa12ffde8244008e9afdb7ac0c1bb1bc1b06b95a" ;;
         *)      DEFAULT_KSU_REF="v4.2.0-rc1" ;;
     esac
     KSU_REF="${KSU_REF:-$DEFAULT_KSU_REF}"
     echo "[*] Kernel-side SuSFS: ${SUSFS_KERNEL_VERSION:-unknown} -> KernelSU ref: ${KSU_REF}"
 
-    curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s "$KSU_REF"
+    # 安装脚本与 KernelSU 代码取自同一个 ref，避免跟随可变的 main 与仓库改名重定向。
+    curl -LSs "https://raw.githubusercontent.com/Baka-SU/BakaSU/${KSU_REF}/kernel/setup.sh" | bash -s "$KSU_REF"
 
     # 上游在 48fa4bb7 中为 kernel/tools/susfs_compat.mk 加入 $(error Please wait susfs
     # update.)，用于中断 SuSFS 构建；该中断在含时序侧信道修复的提交上仍在。此处只
