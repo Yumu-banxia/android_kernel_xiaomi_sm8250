@@ -77,13 +77,16 @@ if [ "$ENABLE_KSU" -eq 1 ]; then
     echo "==========================================="
     echo "[*] Downloading and running ReSukiSU remote setup script..."
 
-    # 上游（ReSukiSU / BakaSU）main 自 2026-10-10 起在 kernel/tools/susfs_compat.mk
-    # 内无条件抛出 "$(error Please wait susfs update.)"，跟随 main 会让 SuSFS 构建
-    # 必然中断。此处按内核侧 SuSFS 版本选定仍然放行 SuSFS 的发行版本，
-    # 可用环境变量 KSU_REF 覆盖。
+    # 版本选择：
+    #   内核侧 SuSFS v2.3.x -> fa12ffde，即 BakaSU main 上 "kernel: fix time side-channel
+    #     detection in selinux hide"（KernelSU PR 3877），修复检测软件通过时序侧信道
+    #     识别 KernelSU 的问题；rc 发行版早于该提交，不含此修复。
+    #   内核侧 SuSFS v2.2.x -> v4.2.0-rc1，v4.2.0-rc2 起依赖的 no_su 系列 helper
+    #     由 SuSFS v2.3.0 的 include/linux/susfs_def.h 提供，v2.2.x 侧缺失。
+    # 可用环境变量 KSU_REF 覆盖，例如 KSU_REF=main 跟随上游最新测试代码。
     SUSFS_KERNEL_VERSION="$(sed -n 's/^#define SUSFS_VERSION "\(v[0-9.]*\)"/\1/p' include/linux/susfs.h 2>/dev/null | head -n1)"
     case "$SUSFS_KERNEL_VERSION" in
-        v2.3.*) DEFAULT_KSU_REF="v4.2.0-rc3" ;;
+        v2.3.*) DEFAULT_KSU_REF="fa12ffde" ;;
         *)      DEFAULT_KSU_REF="v4.2.0-rc1" ;;
     esac
     KSU_REF="${KSU_REF:-$DEFAULT_KSU_REF}"
@@ -91,11 +94,16 @@ if [ "$ENABLE_KSU" -eq 1 ]; then
 
     curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s "$KSU_REF"
 
-    if grep -q "Please wait susfs update" KernelSU/kernel/tools/susfs_compat.mk 2>/dev/null; then
-        echo "[!] KernelSU ref ${KSU_REF} 已停用 SuSFS 构建，请改用仍支持 SuSFS 的发行版本。"
-        exit 1
+    # 上游在 48fa4bb7 中为 kernel/tools/susfs_compat.mk 加入 $(error Please wait susfs
+    # update.)，用于中断 SuSFS 构建；该中断在含时序侧信道修复的提交上仍在。此处只
+    # 删除这一行，其余 compat 探测保持原样，以便继续构建带 SuSFS 的内核。
+    KSU_COMPAT_MK="KernelSU/kernel/tools/susfs_compat.mk"
+    if [ -f "$KSU_COMPAT_MK" ] && grep -q "Please wait susfs update" "$KSU_COMPAT_MK"; then
+        sed -i "/Please wait susfs update/d" "$KSU_COMPAT_MK"
+        echo "[!] ${KSU_REF} 带有 SuSFS 构建中断，已移除该行，SuSFS 保持启用。"
     fi
-    echo "[*] KernelSU HEAD: $(git -C KernelSU rev-parse --short HEAD 2>/dev/null) ($(git -C KernelSU describe --tags --always 2>/dev/null))"
+
+    echo "[*] KernelSU HEAD: $(git -C KernelSU rev-parse --short HEAD 2>/dev/null) $(git -C KernelSU log -1 --format=%s 2>/dev/null)"
     echo "[+] KernelSU setup finished."
 fi
 
