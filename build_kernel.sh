@@ -76,7 +76,26 @@ if [ "$ENABLE_KSU" -eq 1 ]; then
     echo " [*] Initializing KernelSU (ReSukiSU) Setup"
     echo "==========================================="
     echo "[*] Downloading and running ReSukiSU remote setup script..."
-    curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash
+
+    # 上游（ReSukiSU / BakaSU）main 自 2026-10-10 起在 kernel/tools/susfs_compat.mk
+    # 内无条件抛出 "$(error Please wait susfs update.)"，跟随 main 会让 SuSFS 构建
+    # 必然中断。此处按内核侧 SuSFS 版本选定仍然放行 SuSFS 的发行版本，
+    # 可用环境变量 KSU_REF 覆盖。
+    SUSFS_KERNEL_VERSION="$(sed -n 's/^#define SUSFS_VERSION "\(v[0-9.]*\)"/\1/p' include/linux/susfs.h 2>/dev/null | head -n1)"
+    case "$SUSFS_KERNEL_VERSION" in
+        v2.3.*) DEFAULT_KSU_REF="v4.2.0-rc3" ;;
+        *)      DEFAULT_KSU_REF="v4.2.0-rc1" ;;
+    esac
+    KSU_REF="${KSU_REF:-$DEFAULT_KSU_REF}"
+    echo "[*] Kernel-side SuSFS: ${SUSFS_KERNEL_VERSION:-unknown} -> KernelSU ref: ${KSU_REF}"
+
+    curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s "$KSU_REF"
+
+    if grep -q "Please wait susfs update" KernelSU/kernel/tools/susfs_compat.mk 2>/dev/null; then
+        echo "[!] KernelSU ref ${KSU_REF} 已停用 SuSFS 构建，请改用仍支持 SuSFS 的发行版本。"
+        exit 1
+    fi
+    echo "[*] KernelSU HEAD: $(git -C KernelSU rev-parse --short HEAD 2>/dev/null) ($(git -C KernelSU describe --tags --always 2>/dev/null))"
     echo "[+] KernelSU setup finished."
 fi
 
